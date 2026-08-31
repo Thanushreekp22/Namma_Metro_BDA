@@ -77,8 +77,8 @@
       <!-- ── Route Search View ── -->
       <section class="route-search-section" id="view-routes">
         <div class="dashboard-header">
-          <h1 class="dashboard-title">🔀 Route Search</h1>
-          <p class="dashboard-desc">Search trip volume between any two stations over the last 90 days.</p>
+          <h1 class="dashboard-title">🔀 Route Search & Journey Planner</h1>
+          <p class="dashboard-desc">Plan your journey — number of stops, line changes, fare, distance & time to reach — and explore trip volume between any two stations. Plans are stored in MongoDB.</p>
         </div>
 
         <form class="route-search-form" id="route-search-form">
@@ -97,6 +97,8 @@
           <button type="submit" class="btn-search" id="btn-search-route">Search Route</button>
         </form>
 
+        <div class="recent-searches" id="recent-searches"></div>
+
         <div class="route-results" id="route-results">
           <div class="route-headline" id="route-headline">
             <div>
@@ -110,6 +112,39 @@
               <div class="route-stat-value" id="route-avg-passengers">0</div>
               <div class="route-stat-label">Avg passengers / day</div>
             </div>
+          </div>
+
+          <!-- ── Journey Planner Card ── -->
+          <div class="card journey-card">
+            <div class="card-header">
+              <span class="card-title">🧭 Journey Details</span>
+              <span class="card-badge">Stored in MongoDB · journeys</span>
+            </div>
+            <div class="journey-grid">
+              <div class="journey-tile">
+                <div class="jt-value" id="jd-stops">—</div>
+                <div class="jt-label">🚏 Number of Stops</div>
+              </div>
+              <div class="journey-tile">
+                <div class="jt-value" id="jd-distance">—</div>
+                <div class="jt-label">📏 Distance</div>
+              </div>
+              <div class="journey-tile">
+                <div class="jt-value" id="jd-fare">—</div>
+                <div class="jt-label">🎫 Fare</div>
+              </div>
+              <div class="journey-tile">
+                <div class="jt-value" id="jd-time">—</div>
+                <div class="jt-label">⏱️ Time to Reach</div>
+              </div>
+              <div class="journey-tile">
+                <div class="jt-value" id="jd-line-change">—</div>
+                <div class="jt-label">🔀 Line Change</div>
+                <div class="journey-sub" id="jd-interchange-info"></div>
+              </div>
+            </div>
+            <div class="route-path" id="route-path"></div>
+            <div class="journey-note" id="journey-note"></div>
           </div>
 
           <div class="charts-grid">

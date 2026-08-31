@@ -322,7 +322,7 @@ async function populateStationDropdowns() {
 }
 
 // Handle route search
-document.getElementById('route-search-form').addEventListener('submit', async (e) => {
+document.getElementById('route-search-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const from = document.getElementById('from-station').value;
   const to = document.getElementById('to-station').value;
@@ -331,14 +331,23 @@ document.getElementById('route-search-form').addEventListener('submit', async (e
     alert('Please select different stations.');
     return;
   }
+  runRouteSearch(from, to);
+});
 
+async function runRouteSearch(from, to) {
   const btn = document.getElementById('btn-search-route');
   btn.textContent = 'Searching...';
   btn.disabled = true;
 
   try {
-    const res = await fetch(`/api/routes?from=${from}&to=${to}`);
-    const data = await res.json();
+    // Journey plan + historical trip volume, in parallel
+    const [routeRes, journeyRes] = await Promise.all([
+      fetch(`/api/routes?from=${from}&to=${to}`),
+      fetch(`/api/routes/journey?from=${from}&to=${to}`).catch(() => null)
+    ]);
+    const data = await routeRes.json();
+    let journey = null;
+    try { journey = journeyRes ? await journeyRes.json() : null; } catch { journey = null; }
 
     // Show results
     const resultsEl = document.getElementById('route-results');
@@ -348,8 +357,8 @@ document.getElementById('route-search-form').addEventListener('submit', async (e
     const fromStation = (window.allStations || []).find(s => s._id === from);
     const toStation = (window.allStations || []).find(s => s._id === to);
 
-    document.getElementById('route-from-name').textContent = fromStation?.name || from;
-    document.getElementById('route-to-name').textContent = toStation?.name || to;
+    document.getElementById('route-from-name').textContent = (journey && journey.from?.name) || fromStation?.name || from;
+    document.getElementById('route-to-name').textContent = (journey && journey.to?.name) || toStation?.name || to;
     document.getElementById('route-avg-passengers').textContent = formatNumber(data.avg_passengers_per_day);
     document.getElementById('route-total-trips').textContent = formatNumber(data.total_trips);
     document.getElementById('route-total-passengers').textContent = formatNumber(data.total_passengers);
@@ -360,6 +369,14 @@ document.getElementById('route-search-form').addEventListener('submit', async (e
     // ── Reverse Chart ──
     renderRouteChart('route-reverse-chart', data.reverse_daily, '#a855f7', 'routeReverse');
 
+    // ── Journey Details (stops / fare / distance / time / line change) ──
+    if (journey && !journey.error) {
+      renderJourney(journey);
+    }
+
+    // ── Refresh recent searches ──
+    loadRecentSearches();
+
   } catch (err) {
     console.error('Route search failed:', err);
     alert('Failed to search route. Check console.');
@@ -367,7 +384,7 @@ document.getElementById('route-search-form').addEventListener('submit', async (e
     btn.textContent = 'Search Route';
     btn.disabled = false;
   }
-});
+}
 
 function renderRouteChart(canvasId, dailyData, color, chartKey) {
   const ctx = document.getElementById(canvasId);
@@ -501,5 +518,81 @@ async function searchNearby(lat, lng) {
   }
 }
 
+// ══════════════════════════════════
+// ── Journey Planner Rendering
+// ══════════════════════════════════
+
+function renderJourney(j) {
+  document.getElementById('jd-stops').textContent = j.stops;
+  document.getElementById('jd-distance').textContent = j.distance_km + ' km';
+  document.getElementById('jd-fare').textContent = '₹' + j.fare;
+  document.getElementById('jd-time').textContent = j.duration_min + ' min';
+
+  const lineChangeEl = document.getElementById('jd-line-change');
+  const infoEl = document.getElementById('jd-interchange-info');
+  if (j.line_change) {
+    lineChangeEl.textContent = 'Yes';
+    lineChangeEl.style.color = 'var(--warning)';
+    infoEl.textContent = j.interchanges
+      .map(ic => `${ic.name} (${ic.from_line} → ${ic.to_line})`)
+      .join(' · ');
+  } else {
+    lineChangeEl.textContent = 'No';
+    lineChangeEl.style.color = 'var(--success)';
+    infoEl.textContent = 'Same line · direct journey';
+  }
+
+  renderRoutePath(j.path || []);
+
+  const noteEl = document.getElementById('journey-note');
+  const searched = j.search_count ? `searched ${j.search_count} time${j.search_count > 1 ? 's' : ''}` : 'first search';
+  const computed = j.computed_at ? `first computed ${new Date(j.computed_at).toLocaleString()}` : 'computed just now';
+  noteEl.textContent = `💾 Plan stored in MongoDB (journeys collection) · ${searched} · ${computed} · Route via ${j.lines_used.join(' + ')} Line`;
+}
+
+function renderRoutePath(path) {
+  const el = document.getElementById('route-path');
+  const lc = window.LINE_COLORS || { Purple: '#a855f7', Green: '#22c55e', Yellow: '#eab308' };
+
+  el.innerHTML = path.map((s, i) => {
+    const isInterchange =
+      (i > 0 && path[i - 1].line !== s.line) ||
+      (i < path.length - 1 && path[i + 1].line !== s.line);
+    const arrow = i < path.length - 1 ? '<span class="path-arrow">➜</span>' : '';
+    return `<span class="path-chip${isInterchange ? ' interchange' : ''}" title="${s.name} · ${s.line} Line · Station #${s.sequence}">
+      <span class="dot" style="background:${lc[s.line] || '#6366f1'}"></span>${s.name}${isInterchange ? ' ⇄' : ''}
+    </span>${arrow}`;
+  }).join('');
+}
+
+// ── Recent Searches (from MongoDB · route_plans) ──
+async function loadRecentSearches() {
+  try {
+    const res = await fetch('/api/routes/recent');
+    const items = await res.json();
+    const el = document.getElementById('recent-searches');
+    if (!items || !items.length) {
+      el.innerHTML = '<span class="recent-label">🕘 Recent searches</span><span style="font-size:12px;color:var(--text-muted);">No journeys planned yet — search above to get started.</span>';
+      return;
+    }
+    el.innerHTML = '<span class="recent-label">🕘 Recent searches</span>' + items.map(it =>
+      `<button type="button" class="recent-chip" data-from="${it.from}" data-to="${it.to}" title="₹${it.fare} · ${it.duration_min} min · ${it.stops} stops">
+        ${it.from_name} → ${it.to_name}
+      </button>`
+    ).join('');
+
+    el.querySelectorAll('.recent-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.getElementById('from-station').value = chip.dataset.from;
+        document.getElementById('to-station').value = chip.dataset.to;
+        runRouteSearch(chip.dataset.from, chip.dataset.to);
+      });
+    });
+  } catch (err) {
+    console.error('Failed to load recent searches:', err);
+  }
+}
+
 // ── Initialize ──
 populateStationDropdowns();
+loadRecentSearches();
