@@ -24,7 +24,7 @@ const stations = require('../data/stations.json');
 
 // ── Configuration ──
 const DAYS_OF_DATA = 90;
-const BATCH_SIZE = 5000;
+const BATCH_SIZE = 25000; // larger batches → far fewer network round trips to Atlas
 const TARGET_TRIPS = 1_000_000; // ~1M trips
 
 // ── High-traffic station IDs (appear more often as origin/destination) ──
